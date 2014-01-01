@@ -24,6 +24,7 @@ import org.apache.solr.schema.TrieFloatField;
 import org.apache.solr.schema.TrieIntField;
 import org.apache.solr.schema.TrieLongField;
 import org.apache.solr.schema.FieldType;
+import org.apache.solr.search.SolrIndexSearcher.QueryResult;
 import org.apache.solr.handler.component.QueryElevationComponent;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.AtomicReader;
@@ -465,7 +466,7 @@ public class CollapsingQParserPlugin extends QParserPlugin {
       }
     }
 
-    public void finish() throws IOException {
+    public void finish(QueryResult qr) throws IOException {
       if(contexts.length == 0) {
         return;
       }
@@ -518,7 +519,7 @@ public class CollapsingQParserPlugin extends QParserPlugin {
       }
 
       if(delegate instanceof DelegatingCollector) {
-        ((DelegatingCollector) delegate).finish();
+        ((DelegatingCollector) delegate).finish(qr);
       }
     }
   }
@@ -589,7 +590,7 @@ public class CollapsingQParserPlugin extends QParserPlugin {
       fieldValueCollapse.collapse(ord, docId, globalDoc);
     }
 
-    public void finish() throws IOException {
+    public void finish(QueryResult qr) throws IOException {
       if(contexts.length == 0) {
         return;
       }
@@ -636,7 +637,7 @@ public class CollapsingQParserPlugin extends QParserPlugin {
       }
 
       if(delegate instanceof DelegatingCollector) {
-        ((DelegatingCollector) delegate).finish();
+        ((DelegatingCollector) delegate).finish(qr);
       }
     }
   }

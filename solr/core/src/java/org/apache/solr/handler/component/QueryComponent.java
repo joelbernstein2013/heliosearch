@@ -749,7 +749,7 @@ public class QueryComponent extends SearchComponent
 
 
 
-  private void mergeIds(ResponseBuilder rb, ShardRequest sreq) {
+  protected void mergeIds(ResponseBuilder rb, ShardRequest sreq) {
       SortSpec ss = rb.getSortSpec();
       Sort sort = ss.getSort();
 

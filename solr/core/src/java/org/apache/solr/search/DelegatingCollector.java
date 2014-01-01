@@ -19,6 +19,7 @@ package org.apache.solr.search;
 
 
 import org.apache.lucene.index.IndexReader;
+import org.apache.solr.search.SolrIndexSearcher.QueryResult;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.Scorer;
@@ -76,9 +77,9 @@ public class DelegatingCollector extends Collector {
     return delegate.acceptsDocsOutOfOrder();
   }
 
-  public void finish() throws IOException {
+  public void finish(QueryResult qr) throws IOException {
     if(delegate instanceof DelegatingCollector) {
-      ((DelegatingCollector) delegate).finish();
+      ((DelegatingCollector) delegate).finish(qr);
     }
   }
 }
