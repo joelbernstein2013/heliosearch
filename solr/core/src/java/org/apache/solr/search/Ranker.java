@@ -17,6 +17,13 @@
 
 package org.apache.solr.search;
 
-public interface Ranker extends ScoreFilter {
+public abstract class Ranker extends ExtendedQueryBase implements PostFilter, ScoreFilter {
 
+  public final boolean getCache() {
+    return false;
+  }
+
+  public final int getCost() {
+    return Integer.MAX_VALUE;
+  }
 }
