@@ -32,6 +32,7 @@ import org.apache.solr.request.SolrRequestInfo;
 import org.apache.solr.response.SolrQueryResponse;
 import org.apache.solr.search.DocListAndSet;
 import org.apache.solr.search.QParser;
+import org.apache.solr.search.CollectorFactory;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.search.SortSpec;
 import org.apache.solr.search.grouping.GroupingSpecification;
@@ -72,6 +73,7 @@ public class ResponseBuilder
   private GroupingSpecification groupingSpec;
   //used for handling deep paging
   private ScoreDoc scoreDoc;
+  private CollectorFactory collectorFactory;
 
 
   private DocListAndSet results = null;
@@ -187,6 +189,14 @@ public class ResponseBuilder
       debugInfo = new SimpleOrderedMap<Object>();
     }
     debugInfo.add( name, val );
+  }
+
+  public void setCollectorFactory(CollectorFactory collectorFactory) {
+    this.collectorFactory = collectorFactory;
+  }
+
+  public CollectorFactory getCollectorFactory() {
+    return this.collectorFactory;
   }
 
   public void addDebug(Object val, String... path) {
@@ -395,6 +405,7 @@ public class ResponseBuilder
             .setLen(getSortSpec().getCount())
             .setFlags(getFieldFlags())
             .setNeedDocSet(isNeedDocSet())
+            .setCollectorFactory(getCollectorFactory())
             .setScoreDoc(getScoreDoc()); //Issue 1726
     return cmd;
   }

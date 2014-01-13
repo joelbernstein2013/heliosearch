@@ -2360,8 +2360,9 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
       return this.collectorFactory;
     }
 
-    public void setCollectorFactory(CollectorFactory collector) {
+    public QueryCommand setCollectorFactory(CollectorFactory collector) {
       this.collectorFactory = collectorFactory;
+      return this;
     }
 
     public void setScoreDoc(ScoreDoc scoreDoc)
