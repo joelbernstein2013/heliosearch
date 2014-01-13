@@ -1660,15 +1660,20 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
         maxScore = totalHits>0 ? topscore[0] : 0.0f;
       } else {
         TopDocsCollector topCollector;
-        if (cmd.getSort() == null) {
-          if(cmd.getScoreDoc() != null) {
-            topCollector = TopScoreDocCollector.create(len, cmd.getScoreDoc(), true); //create the Collector with InOrderPagingCollector
-          } else {
-            topCollector = TopScoreDocCollector.create(len, true);
-          }
-
+        if(cmd.getCollectorFactory() != null) {
+          CollectorFactory collectorFactory = cmd.getCollectorFactory();
+          topCollector = collectorFactory.getTopDocsCollector(cmd);
         } else {
-          topCollector = TopFieldCollector.create(weightSort(cmd.getSort()), len, false, needScores, needScores, true);
+          if (cmd.getSort() == null) {
+            if(cmd.getScoreDoc() != null) {
+              topCollector = TopScoreDocCollector.create(len, cmd.getScoreDoc(), true); //create the Collector with InOrderPagingCollector
+            } else {
+              topCollector = TopScoreDocCollector.create(len, true);
+            }
+
+          } else {
+            topCollector = TopFieldCollector.create(weightSort(cmd.getSort()), len, false, needScores, needScores, true);
+          }
         }
         Collector collector = topCollector;
         if (terminateEarly) {
@@ -1802,10 +1807,15 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
 
       TopDocsCollector topCollector;
 
-      if (cmd.getSort() == null) {
-        topCollector = TopScoreDocCollector.create(len, true);
+      if(cmd.getCollectorFactory() != null) {
+        CollectorFactory collectorFactory = cmd.getCollectorFactory();
+        topCollector = collectorFactory.getTopDocsCollector(cmd);
       } else {
-        topCollector = TopFieldCollector.create(weightSort(cmd.getSort()), len, false, needScores, needScores, true);
+        if (cmd.getSort() == null) {
+          topCollector = TopScoreDocCollector.create(len, true);
+        } else {
+          topCollector = TopFieldCollector.create(weightSort(cmd.getSort()), len, false, needScores, needScores, true);
+        }
       }
 
       setCollector = new DocSetDelegateCollector(smallSetSize, maxDoc, topCollector);
@@ -2337,6 +2347,7 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     private int supersetMaxDoc;
     private int flags;
     private long timeAllowed = -1;
+    private CollectorFactory collectorFactory;
     //Issue 1726 start
     private ScoreDoc scoreDoc;
     
@@ -2344,6 +2355,15 @@ public class SolrIndexSearcher extends IndexSearcher implements Closeable,SolrIn
     {
       return scoreDoc;
     }
+
+    public CollectorFactory getCollectorFactory() {
+      return this.collectorFactory;
+    }
+
+    public void setCollectorFactory(CollectorFactory collector) {
+      this.collectorFactory = collectorFactory;
+    }
+
     public void setScoreDoc(ScoreDoc scoreDoc)
     {
       this.scoreDoc = scoreDoc;
