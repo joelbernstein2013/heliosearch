@@ -171,7 +171,7 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
   HashMap<Integer, List<ScoreDoc>> ordMap = new HashMap<Integer, List<ScoreDoc>>();
   while(expandedIterator.hasNext()) {
       int doc = expandedIterator.nextDoc();
-      float score = expandedIterator.score();
+      float score = expandedDocList.hasScores() ? expandedIterator.score() : 0.0F;
       int ord = values.getOrd(doc);
       Integer ordInteger = new Integer(ord);
       if(ordMap.containsKey(ordInteger)) {
@@ -314,7 +314,7 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     public void collect(int docId) throws IOException {
       int doc = docBase+docId;
       int ord = this.values.getOrd(doc);
-      if(groupBits.get(ord) && !collapsedSet.get(doc)) {
+      if(ord > -1 && groupBits.get(ord) && !collapsedSet.get(doc)) {
         delegate.collect(docId);
       }
     }
