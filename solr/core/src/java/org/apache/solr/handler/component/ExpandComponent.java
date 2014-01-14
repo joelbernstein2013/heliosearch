@@ -17,37 +17,41 @@
 
 package org.apache.solr.handler.component;
 
+import com.carrotsearch.hppc.cursors.IntObjectCursor;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
 import org.apache.lucene.index.SortedDocValues;
-import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.FieldCache;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.Collector;
+import org.apache.lucene.search.TopDocsCollector;
+import org.apache.lucene.search.TopFieldCollector;
+import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.util.StrUtils;
 import org.apache.solr.search.CollapsingQParserPlugin;
-import org.apache.solr.search.DelegatingCollector;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocList;
 import org.apache.solr.search.QueryParsing;
-
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.search.DocSlice;
-import org.apache.solr.search.ExtendedQueryBase;
-import org.apache.solr.search.PostFilter;
 import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.util.plugin.PluginInfoInitialized;
 import org.apache.solr.util.plugin.SolrCoreAware;
 import org.apache.solr.core.PluginInfo;
 import org.apache.solr.core.SolrCore;
+
+import com.carrotsearch.hppc.IntObjectOpenHashMap;
 
 import java.io.IOException;
 import java.net.URL;
@@ -109,19 +113,13 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
 
     String field = params.get("expand.field");
     String sortParam = params.get("expand.sort");
-    String rowsParam = params.get("expand.rows");
     String limitString = params.get("expand.limit");
 
     Sort sort = null;
-    int limit = Integer.MAX_VALUE;
-    int rows = 1000;
+    int limit = 5;
 
     if(limitString != null) {
       limit = Integer.parseInt(limitString);
-    }
-
-    if(rowsParam != null) {
-      rows = Integer.parseInt(rowsParam);
     }
 
     if(sortParam != null) {
@@ -143,9 +141,9 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
         groupBits.set(ordValue);
       }
     } else {
-    DocList docList = rb.getResults().docList;
-    DocIterator it = docList.iterator();
-    while(it.hasNext()) {
+      DocList docList = rb.getResults().docList;
+      DocIterator it = docList.iterator();
+      while(it.hasNext()) {
         Integer doc = it.next();
         int ordValue = values.getOrd(doc.intValue());
         collapsedSet.set(doc.intValue());
@@ -158,32 +156,32 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     List<Query> newFilters = new ArrayList();
     for(int i=0; i<filters.size(); i++) {
     Query q = filters.get(i);
-    if(!(q instanceof CollapsingQParserPlugin.CollapsingPostFilter)) {
+      if(!(q instanceof CollapsingQParserPlugin.CollapsingPostFilter)) {
         newFilters.add(q);
       }
     }
 
-  GroupPostFilter groupPostFilter = new GroupPostFilter(collapsedSet, groupBits, values);
-  newFilters.add(groupPostFilter);
+    Collector collector = null;
+    GroupExpandCollector groupExpandCollector = new GroupExpandCollector(values,groupBits, collapsedSet, limit, sort);
+    SolrIndexSearcher.ProcessedFilter pfilter = searcher.getProcessedFilter(null, newFilters);
+    if(pfilter.postFilter != null) {
+      pfilter.postFilter.setLastDelegate(groupExpandCollector);
+      collector = pfilter.postFilter;
+    } else {
+      collector = groupExpandCollector;
+    }
 
-  DocList expandedDocList = searcher.getDocList(query, newFilters, sort, 0, rows, rb.getQueryCommand().getFlags());
-  DocIterator expandedIterator = expandedDocList.iterator();
-  HashMap<Integer, List<ScoreDoc>> ordMap = new HashMap<Integer, List<ScoreDoc>>();
-  while(expandedIterator.hasNext()) {
-      int doc = expandedIterator.nextDoc();
-      float score = expandedDocList.hasScores() ? expandedIterator.score() : 0.0F;
-      int ord = values.getOrd(doc);
-      Integer ordInteger = new Integer(ord);
-      if(ordMap.containsKey(ordInteger)) {
-          List<ScoreDoc> scoreDocs = (List<ScoreDoc>)ordMap.get(ordInteger);
-          if(scoreDocs.size() < limit) {
-              scoreDocs.add(new ScoreDoc(doc, score));
-            }
-        } else {
-          List<ScoreDoc> scoreDocs = new ArrayList<ScoreDoc>();
-          scoreDocs.add(new ScoreDoc(doc, score));
-          ordMap.put(ordInteger, scoreDocs);
-        }
+    searcher.search(query, pfilter.filter, collector);
+    IntObjectOpenHashMap groups = groupExpandCollector.getGroups();
+    Iterator<IntObjectCursor> it = groups.iterator();
+    HashMap<Integer, ScoreDoc[]> ordMap = new HashMap<Integer, ScoreDoc[]>();
+    while(it.hasNext()) {
+      IntObjectCursor cursor = it.next();
+      TopDocsCollector topDocsCollector = (TopDocsCollector)cursor.value;
+      int ord = cursor.key;
+      TopDocs topDocs = topDocsCollector.topDocs();
+      ScoreDoc[] scoreDocs = topDocs.scoreDocs;
+      ordMap.put(ord, scoreDocs);
     }
 
     NamedList outList = new NamedList();
@@ -193,16 +191,16 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       float maxScore = 0.0f;
       Map.Entry entry = (Map.Entry)entries.next();
       Integer ord = (Integer) entry.getKey();
-      List<ScoreDoc> scoreDocs = (List<ScoreDoc>)entry.getValue();
-      int[] docs = new int[scoreDocs.size()];
-      float[] scores = new float[scoreDocs.size()];
+      ScoreDoc[] scoreDocs = (ScoreDoc[])entry.getValue();
+      int[] docs = new int[scoreDocs.length];
+      float[] scores = new float[scoreDocs.length];
       for(int i=0; i<docs.length; i++) {
-          ScoreDoc scoreDoc = scoreDocs.get(i);
+          ScoreDoc scoreDoc = scoreDocs[i];
           docs[i] = scoreDoc.doc;
           scores[i] = scoreDoc.score;
           if(scoreDoc.score > maxScore) {
-              maxScore = scoreDoc.score;
-            }
+            maxScore = scoreDoc.score;
+          }
         }
 
       DocSlice slice = new DocSlice(0, docs.length, docs, scores, docs.length, maxScore);
@@ -244,87 +242,64 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
 
     rb.rsp.add("expanded", rb.req.getContext().get("expanded"));
   }
-  
-  public class GroupPostFilter extends ExtendedQueryBase implements PostFilter {
-    private FixedBitSet collapsedSet;
-    private FixedBitSet groupBits;
-    private SortedDocValues values;
 
-    public void setCache(boolean cache) {
-
-    }
-
-    public void setCacheSep(boolean cacheSep) {
-
-    }
-
-    public boolean getCacheSep() {
-      return false;
-    }
-
-    public boolean getCache() {
-      return false;
-    }
-
-    public int hashCode() {
-      return 1;
-    }
-
-    public boolean equals(Object o) {
-      return false;
-    }
-
-    public int getCost() {
-      return Math.max(super.getCost(), 100);
-    }
-
-    public String toString(String s) {
-      return s;
-    }
-
-    public GroupPostFilter(FixedBitSet collapsedSet, FixedBitSet groupBits , SortedDocValues values) throws IOException {
-      this.collapsedSet = collapsedSet;
-      this.groupBits = groupBits;
-      this.values = values;
-    }
-
-    public DelegatingCollector getFilterCollector(IndexSearcher indexSearcher) {
-      return new GroupFilterCollector(this.collapsedSet, this.groupBits, this.values);
-    }
-  }
-
- public class GroupFilterCollector extends DelegatingCollector {
-
-    private SortedDocValues values;
-    private FixedBitSet collapsedSet;
-    private FixedBitSet groupBits;
+  public class GroupExpandCollector extends Collector {
+    private SortedDocValues docValues;
+    private IntObjectOpenHashMap groups;
+    private int limit;
     private int docBase;
+    private FixedBitSet groupBits;
+    private FixedBitSet collapsedSet;
 
-    public GroupFilterCollector(FixedBitSet collapsedSet, FixedBitSet groupBits, SortedDocValues values) {
+    public GroupExpandCollector(SortedDocValues docValues, FixedBitSet groupBits, FixedBitSet collapsedSet, int limit, Sort sort) throws IOException {
+      groups = new IntObjectOpenHashMap();
+      DocIdSetIterator iterator = groupBits.iterator();
+      int group = -1;
+      while((group = iterator.nextDoc()) != DocIdSetIterator.NO_MORE_DOCS) {
+        Collector collector = (sort == null) ? TopScoreDocCollector.create(limit, true) : TopFieldCollector.create(sort,limit, false, false,false, true);
+        groups.put(group, collector);
+      }
+
       this.collapsedSet = collapsedSet;
       this.groupBits = groupBits;
-      this.values = values;
+      this.docValues = docValues;
+      this.limit = limit;
+    }
+
+    public IntObjectOpenHashMap getGroups() {
+      return this.groups;
+    }
+
+    public boolean acceptsDocsOutOfOrder() {
+      return false;
+    }
+
+    public void collect(int docId) throws IOException {
+      int doc = docId+docBase;
+      int ord = docValues.getOrd(doc);
+      if(ord > -1 && groupBits.get(ord) && !collapsedSet.get(doc)) {
+        Collector c = (Collector)groups.get(ord);
+        c.collect(docId);
+      }
     }
 
     public void setNextReader(AtomicReaderContext context) throws IOException {
       this.docBase = context.docBase;
-      delegate.setNextReader(context);
-    }
-
-    public void collect(int docId) throws IOException {
-      int doc = docBase+docId;
-      int ord = this.values.getOrd(doc);
-      if(ord > -1 && groupBits.get(ord) && !collapsedSet.get(doc)) {
-        delegate.collect(docId);
+      Iterator<IntObjectCursor> cursor = groups.iterator();
+      while(cursor.hasNext()) {
+        IntObjectCursor c = cursor.next();
+        Collector collector = (Collector)c.value;
+        collector.setNextReader(context);
       }
     }
 
-    public void finish() throws IOException {
-      super.finish();
-    }
-
     public void setScorer(Scorer scorer) throws IOException {
-      delegate.setScorer(scorer);
+      Iterator<IntObjectCursor> cursor = groups.iterator();
+      while(cursor.hasNext()) {
+        IntObjectCursor c = cursor.next();
+        Collector collector = (Collector)c.value;
+        collector.setScorer(scorer);
+      }
     }
   }
 
