@@ -750,6 +750,11 @@ public class QueryComponent extends SearchComponent
 
 
   private void mergeIds(ResponseBuilder rb, ShardRequest sreq) {
+      if(rb.getMergeStrategy() != null) {
+        rb.getMergeStrategy().mergeIds(rb, sreq);
+        return;
+      }
+
       SortSpec ss = rb.getSortSpec();
       Sort sort = ss.getSort();
 

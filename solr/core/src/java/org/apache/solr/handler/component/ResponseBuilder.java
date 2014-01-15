@@ -74,7 +74,7 @@ public class ResponseBuilder
   //used for handling deep paging
   private ScoreDoc scoreDoc;
   private CollectorFactory collectorFactory;
-
+  private MergeStrategy mergeStrategy;
 
   private DocListAndSet results = null;
   private NamedList<Object> debugInfo = null;
@@ -150,6 +150,14 @@ public class ResponseBuilder
         }
       }
     }
+  }
+
+  public MergeStrategy getMergeStrategy() {
+    return this.mergeStrategy;
+  }
+
+  public void setMergePolicy(MergeStrategy mergeStrategy) {
+    this.mergeStrategy = mergeStrategy;
   }
 
   public GlobalCollectionStat globalCollectionStat;
