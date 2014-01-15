@@ -246,7 +246,6 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
   public class GroupExpandCollector extends Collector {
     private SortedDocValues docValues;
     private IntObjectOpenHashMap groups;
-    private int limit;
     private int docBase;
     private FixedBitSet groupBits;
     private FixedBitSet collapsedSet;
@@ -263,7 +262,6 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       this.collapsedSet = collapsedSet;
       this.groupBits = groupBits;
       this.docValues = docValues;
-      this.limit = limit;
     }
 
     public IntObjectOpenHashMap getGroups() {
