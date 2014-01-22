@@ -181,7 +181,9 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       int ord = cursor.key;
       TopDocs topDocs = topDocsCollector.topDocs();
       ScoreDoc[] scoreDocs = topDocs.scoreDocs;
-      ordMap.put(ord, scoreDocs);
+      if(scoreDocs.length > 0) {
+        ordMap.put(ord, scoreDocs);
+      }
     }
 
     NamedList outList = new NamedList();
