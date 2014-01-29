@@ -67,6 +67,14 @@ public class TestExpandComponent extends SolrTestCaseJ4 {
     assertU(adoc(doc5));
     assertU(commit());
 
+    String[] doc6 = {"id","7", "term_s", "YYYY", "group_s", "group1", "test_ti", "1", "test_tl", "100000", "test_tf", "2000"};
+    assertU(adoc(doc6));
+    assertU(commit());
+    String[] doc7 = {"id","8", "term_s","YYYY", "group_s", "group2", "test_ti", "2", "test_tl", "100000", "test_tf", "200"};
+    assertU(adoc(doc7));
+    assertU(commit());
+
+
 
     //First basic test case.
     ModifiableSolrParams params = new ModifiableSolrParams();
@@ -81,8 +89,53 @@ public class TestExpandComponent extends SolrTestCaseJ4 {
         "/response/result/doc[1]/float[@name='id'][.='2.0']",
         "/response/result/doc[2]/float[@name='id'][.='6.0']",
         "/response/lst[@name='expanded']/result[@name='group1']/doc[1]/float[@name='id'][.='1.0']",
-        "/response/lst[@name='expanded']/result[@name='group2']/doc[1]/float[@name='id'][.='5.0']"
+        "/response/lst[@name='expanded']/result[@name='group1']/doc[2]/float[@name='id'][.='7.0']",
+        "/response/lst[@name='expanded']/result[@name='group2']/doc[1]/float[@name='id'][.='5.0']",
+        "/response/lst[@name='expanded']/result[@name='group2']/doc[2]/float[@name='id'][.='8.0']"
     );
+
+    //Test expand.sort
+    params = new ModifiableSolrParams();
+    params.add("q", "*:*");
+    params.add("fq", "{!collapse field=group_s}");
+    params.add("defType", "edismax");
+    params.add("bf", "field(test_ti)");
+    params.add("expand", "true");
+    params.add("expand.field", "group_s");
+    params.add("expand.sort", "test_tl desc");
+    assertQ(req(params), "*[count(/response/result/doc)=2]",
+        "*[count(/response/lst[@name='expanded']/result)=2]",
+        "/response/result/doc[1]/float[@name='id'][.='2.0']",
+        "/response/result/doc[2]/float[@name='id'][.='6.0']",
+        "/response/lst[@name='expanded']/result[@name='group1']/doc[1]/float[@name='id'][.='7.0']",
+        "/response/lst[@name='expanded']/result[@name='group1']/doc[2]/float[@name='id'][.='1.0']",
+        "/response/lst[@name='expanded']/result[@name='group2']/doc[1]/float[@name='id'][.='8.0']",
+        "/response/lst[@name='expanded']/result[@name='group2']/doc[2]/float[@name='id'][.='5.0']"
+    );
+
+
+    //Test expand.rows
+
+    params = new ModifiableSolrParams();
+    params.add("q", "*:*");
+    params.add("fq", "{!collapse field=group_s}");
+    params.add("defType", "edismax");
+    params.add("bf", "field(test_ti)");
+    params.add("expand", "true");
+    params.add("expand.field", "group_s");
+    params.add("expand.sort", "test_tl desc");
+    params.add("expand.rows", "1");
+    assertQ(req(params), "*[count(/response/result/doc)=2]",
+        "*[count(/response/lst[@name='expanded']/result)=2]",
+        "*[count(/response/lst[@name='expanded']/result[@name='group1']/doc)=1]",
+        "*[count(/response/lst[@name='expanded']/result[@name='group2']/doc)=1]",
+        "/response/result/doc[1]/float[@name='id'][.='2.0']",
+        "/response/result/doc[2]/float[@name='id'][.='6.0']",
+        "/response/lst[@name='expanded']/result[@name='group1']/doc[1]/float[@name='id'][.='7.0']",
+        "/response/lst[@name='expanded']/result[@name='group2']/doc[1]/float[@name='id'][.='8.0']"
+    );
+
+
 
   }
 }

@@ -113,14 +113,9 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
 
     String field = params.get("expand.field");
     String sortParam = params.get("expand.sort");
-    String limitString = params.get("expand.limit");
+    int limit = params.getInt("expand.rows", 5);
 
     Sort sort = null;
-    int limit = 5;
-
-    if(limitString != null) {
-      limit = Integer.parseInt(limitString);
-    }
 
     if(sortParam != null) {
       sort = QueryParsing.parseSort(sortParam, rb.req);
@@ -133,8 +128,8 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     FixedBitSet collapsedSet = new FixedBitSet(reader.maxDoc());
 
     if(ids != null) {
-    List<String> idArr = StrUtils.splitSmart(ids, ",", true);
-    for(int i=0; i<idArr.size(); i++) {
+      List<String> idArr = StrUtils.splitSmart(ids, ",", true);
+      for(int i=0; i<idArr.size(); i++) {
         int id = Integer.parseInt(idArr.get(i));
         int ordValue = values.getOrd(id);
         collapsedSet.set(id);
