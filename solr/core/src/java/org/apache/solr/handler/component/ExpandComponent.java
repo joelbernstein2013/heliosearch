@@ -17,10 +17,15 @@
 
 package org.apache.solr.handler.component;
 
+import com.carrotsearch.hppc.IntArrayList;
+import com.carrotsearch.hppc.IntOpenHashSet;
 import com.carrotsearch.hppc.cursors.IntObjectCursor;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
+import org.apache.lucene.index.DocsEnum;
 import org.apache.lucene.index.SortedDocValues;
+import org.apache.lucene.index.Terms;
+import org.apache.lucene.index.TermsEnum;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.Scorer;
@@ -32,15 +37,18 @@ import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.TopDocsCollector;
 import org.apache.lucene.search.TopFieldCollector;
 import org.apache.lucene.search.TopScoreDocCollector;
+import org.apache.lucene.util.Bits;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.params.ShardParams;
 import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.schema.SchemaField;
 import org.apache.solr.search.CollapsingQParserPlugin;
 import org.apache.solr.search.DocIterator;
 import org.apache.solr.search.DocList;
 import org.apache.solr.search.QueryParsing;
+import org.apache.solr.schema.FieldType;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.request.SolrQueryRequest;
@@ -57,11 +65,13 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
-    /**
+/**
   * The ExpandComponent is designed to work with the CollapsingPostFilter.
   * The CollapsingPostFilter collapses a result set on a field.
   *
@@ -129,8 +139,9 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
 
     if(ids != null) {
       List<String> idArr = StrUtils.splitSmart(ids, ",", true);
-      for(int i=0; i<idArr.size(); i++) {
-        int id = Integer.parseInt(idArr.get(i));
+      IntArrayList luceneIds = getLuceneIds(searcher, idArr);
+      for(int i=0; i<luceneIds.size(); i++) {
+        int id = luceneIds.get(i);
         int ordValue = values.getOrd(id);
         collapsedSet.set(id);
         groupBits.set(ordValue);
@@ -208,6 +219,50 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
 
     rb.rsp.add("expanded", outList);
   }
+
+  private IntArrayList getLuceneIds(SolrIndexSearcher indexSearcher, List<String> externalIds) throws IOException {
+    IntArrayList luceneIds = null;
+    if(externalIds != null) {
+      SchemaField idField = indexSearcher.getSchema().getUniqueKeyField();
+      String fieldName = idField.getName();
+      FieldType type = idField.getType();
+      List<BytesRef> bytesRefs = new ArrayList<>();
+      for(String externalId : externalIds) {
+        BytesRef ref = new BytesRef();
+        type.readableToIndexed(externalId, ref);
+        bytesRefs.add(ref);
+      }
+
+      luceneIds = new IntArrayList();
+
+      List<AtomicReaderContext>leaves = indexSearcher.getTopReaderContext().leaves();
+      TermsEnum termsEnum = null;
+      DocsEnum docsEnum = null;
+      for(AtomicReaderContext leaf : leaves) {
+        AtomicReader reader = leaf.reader();
+        int docBase = leaf.docBase;
+        Bits liveDocs = reader.getLiveDocs();
+        Terms terms = reader.terms(fieldName);
+        termsEnum = terms.iterator(termsEnum);
+        if(bytesRefs.size() == 0) break;
+        Iterator<BytesRef> it = bytesRefs.iterator();
+        while(it.hasNext()) {
+          BytesRef ref = it.next();
+          if(termsEnum.seekExact(ref)) {
+            docsEnum = termsEnum.docs(liveDocs, docsEnum);
+            int doc = docsEnum.nextDoc();
+            if(doc != -1) {
+              //Found the document.
+              luceneIds.add(doc+docBase);
+              it.remove();
+            }
+          }
+        }
+      }
+    }
+
+    return luceneIds;
+  }
   
         @Override
   public void modifyRequest(ResponseBuilder rb, SearchComponent who, ShardRequest sreq) {
@@ -216,19 +271,23 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
   
         @Override
   public void handleResponses(ResponseBuilder rb, ShardRequest sreq) {
-    NamedList expanded = new NamedList();
+    NamedList expanded = (NamedList)rb.req.getContext().get("expanded");
+    if(expanded == null) {
+      expanded = new NamedList();
+      rb.req.getContext().put("expanded", expanded);
+    }
     if ((sreq.purpose & ShardRequest.PURPOSE_GET_FIELDS) != 0) {
-    for (ShardResponse srsp : sreq.responses) {
+      for (ShardResponse srsp : sreq.responses) {
         NamedList response = srsp.getSolrResponse().getResponse();
         NamedList ex = (NamedList)response.get("expanded");
         for(int i=0; i<ex.size(); i++) {
-            String name = ex.getName(i);
-            SolrDocumentList val = (SolrDocumentList)ex.getVal(i);
-            expanded.add(name, val);
-          }
+          String name = ex.getName(i);
+          SolrDocumentList val = (SolrDocumentList)ex.getVal(i);
+          expanded.add(name, val);
+        }
       }
-      rb.req.getContext().put("expanded", expanded);
     }
+
   }
   
         @Override
@@ -237,6 +296,7 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       return;
     }
 
+    NamedList l = (NamedList)rb.req.getContext().get("expanded");
     rb.rsp.add("expanded", rb.req.getContext().get("expanded"));
   }
 

@@ -47,6 +47,8 @@ public class QueryResponse extends SolrResponseBase
   // Grouping response
   private NamedList<Object> _groupedInfo = null;
   private GroupResponse _groupResponse = null;
+  private NamedList<Object> _expandedInfo = null;
+  private Map<String, SolrDocumentList> _expandedResults = null;
 
   // Facet stuff
   private Map<String,Integer> _facetQuery = null;
@@ -113,6 +115,10 @@ public class QueryResponse extends SolrResponseBase
         _debugInfo = (NamedList<Object>) res.getVal( i );
         extractDebugInfo( _debugInfo );
       }
+      else if("expanded".equals(n)) {
+        _expandedInfo = (NamedList<Object>) res.getVal( i );
+        extractExpandedInfo(_expandedInfo);
+      }
       else if( "grouped".equals( n ) ) {
         _groupedInfo = (NamedList<Object>) res.getVal( i );
         extractGroupedInfo( _groupedInfo );
@@ -176,6 +182,13 @@ public class QueryResponse extends SolrResponseBase
         String key = info.getKey();
         _explainMap.put( key, info.getValue() );
       }
+    }
+  }
+
+  private void extractExpandedInfo(NamedList<Object> info) {
+    _expandedResults = new HashMap<String, SolrDocumentList>();
+    for(int i=0; i< info.size(); i++) {
+      _expandedResults.put(info.getName(i), (SolrDocumentList)info.getVal(i));
     }
   }
 
@@ -439,6 +452,10 @@ public class QueryResponse extends SolrResponseBase
 
   public List<RangeFacet> getFacetRanges() {
     return _facetRanges;
+  }
+
+  public Map<String, SolrDocumentList> getExpandedResults(){
+    return this._expandedResults;
   }
 
   public NamedList<List<PivotField>> getFacetPivot()   {
