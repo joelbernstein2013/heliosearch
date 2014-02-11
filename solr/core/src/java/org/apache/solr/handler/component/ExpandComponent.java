@@ -18,7 +18,6 @@
 package org.apache.solr.handler.component;
 
 import com.carrotsearch.hppc.IntArrayList;
-import com.carrotsearch.hppc.IntOpenHashSet;
 import com.carrotsearch.hppc.cursors.IntObjectCursor;
 import org.apache.lucene.index.AtomicReader;
 import org.apache.lucene.index.AtomicReaderContext;
@@ -65,11 +64,9 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Set;
 
 /**
   * The ExpandComponent is designed to work with the CollapsingPostFilter.
@@ -161,7 +158,7 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
     List<Query> filters = rb.getFilters();
     List<Query> newFilters = new ArrayList();
     for(int i=0; i<filters.size(); i++) {
-    Query q = filters.get(i);
+      Query q = filters.get(i);
       if(!(q instanceof CollapsingQParserPlugin.CollapsingPostFilter)) {
         newFilters.add(q);
       }
@@ -203,13 +200,13 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       int[] docs = new int[scoreDocs.length];
       float[] scores = new float[scoreDocs.length];
       for(int i=0; i<docs.length; i++) {
-          ScoreDoc scoreDoc = scoreDocs[i];
-          docs[i] = scoreDoc.doc;
-          scores[i] = scoreDoc.score;
-          if(scoreDoc.score > maxScore) {
-            maxScore = scoreDoc.score;
-          }
+        ScoreDoc scoreDoc = scoreDocs[i];
+        docs[i] = scoreDoc.doc;
+        scores[i] = scoreDoc.score;
+        if(scoreDoc.score > maxScore) {
+          maxScore = scoreDoc.score;
         }
+      }
 
       DocSlice slice = new DocSlice(0, docs.length, docs, scores, docs.length, maxScore);
       values.lookupOrd(ord.intValue(), bytesRef);
@@ -287,7 +284,6 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
         }
       }
     }
-
   }
   
         @Override
@@ -296,11 +292,10 @@ public class ExpandComponent extends SearchComponent implements PluginInfoInitia
       return;
     }
 
-    NamedList l = (NamedList)rb.req.getContext().get("expanded");
     rb.rsp.add("expanded", rb.req.getContext().get("expanded"));
   }
 
-  public class GroupExpandCollector extends Collector {
+  private class GroupExpandCollector extends Collector {
     private SortedDocValues docValues;
     private IntObjectOpenHashMap groups;
     private int docBase;
